@@ -69,58 +69,6 @@ def check_missing_values(df):
     })
     
     print(missing_info[missing_info['Liczba braków'] > 0].sort_values('Liczba braków', ascending=False))
-
-
-def visualize_data_distribution(df):
-    """
-    Tworzy wizualizacje rozkładu danych
-    
-    Args:
-        df (pd.DataFrame): DataFrame z danymi
-    """
-    plt.figure(figsize=(15, 10))
-    
-    # Rozkład wieku
-    plt.subplot(2, 3, 1)
-    sns.histplot(df['Age'].dropna(), kde=True, bins=30)
-    plt.title('Rozkład wieku pasażerów')
-    plt.xlabel('Wiek')
-    plt.ylabel('Liczebność')
-    
-    # Przeżywalność
-    plt.subplot(2, 3, 2)
-    sns.countplot(data=df, x='Survived')
-    plt.title('Rozkład przeżywalności')
-    plt.xlabel('Przeżył (0=Nie, 1=Tak)')
-    plt.ylabel('Liczba pasażerów')
-    
-    # Cena biletu według klasy
-    plt.subplot(2, 3, 3)
-    sns.boxplot(data=df, x='Pclass', y='Fare')
-    plt.title('Cena biletu według klasy')
-    plt.xlabel('Klasa')
-    plt.ylabel('Cena biletu')
-    
-    # Rozkład płci
-    plt.subplot(2, 3, 4)
-    sns.countplot(data=df, x='Sex')
-    plt.title('Rozkład płci')
-    plt.xlabel('Płeć')
-    plt.ylabel('Liczba pasażerów')
-    
-    # Port zaokrętowania
-    plt.subplot(2, 3, 5)
-    sns.countplot(data=df, x='Embarked')
-    plt.title('Port zaokrętowania')
-    plt.xlabel('Port')
-    plt.ylabel('Liczba pasażerów')
-    
-    # Mapa korelacji (tylko dla danych numerycznych)
-    plt.subplot(2, 3, 6)
-    numeric_df = df.select_dtypes(include=[np.number])
-    correlation_matrix = numeric_df.corr()
-    sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', center=0)
-    plt.title('Mapa korelacji cech numerycznych')
     
     plt.tight_layout()
     plt.show()
