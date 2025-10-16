@@ -53,12 +53,6 @@ def check_missing_values(df):
         'Procent braków': missing_percent
     })
     print(missing_info[missing_info['Liczba braków'] > 0].sort_values('Liczba braków', ascending=False))
-    plt.figure(figsize=(10, 6))
-    sns.barplot(x=missing_info.index, y=missing_info['Procent braków'])
-    plt.title('Procent brakujących danych w każdej kolumnie')
-    plt.xticks(rotation=90)
-    plt.tight_layout()
-    plt.show()
 
 
 path_to_data = 'data/SalaryDataFinall.csv'
