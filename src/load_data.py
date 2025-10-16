@@ -2,20 +2,37 @@ import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
-
+from tabulate import tabulate
 
 def load_data(path):
-    df = pd.read_csv(path)
-    print("=== PODSTAWOWE INFORMACJE O DANYCH ===")
-    print("\n--- Pierwsze 5 wierszy ---")
-    print(df.head())
+    try:
+        df = pd.read_csv(path, sep=None, engine='python', encoding='utf-8')
+    except UnicodeDecodeError:
+        df = pd.read_csv(path, sep=None, engine='python', encoding='latin1')
+    
+    print("\n=== PODSTAWOWE INFORMACJE O DANYCH ===\n")
+
+    print("--- Pierwsze 5 wierszy ---")
+    print(tabulate(df.head(), headers='keys', tablefmt='fancy_grid', showindex=False))
+
     print("\n--- Informacje o typach danych ---")
-    print(df.info())
-    print("\n--- Statystyki opisowe ---") 
-    print(df.describe())
+    info_df = pd.DataFrame({
+        'Kolumna': df.columns,
+        'Typ danych': df.dtypes.astype(str),
+        'Liczba braków': df.isna().sum(),
+        'Unikalne wartości': [df[col].nunique() for col in df.columns]
+    })
+    print(tabulate(info_df, headers='keys', tablefmt='github', showindex=False))
+
+    print("\n--- Statystyki opisowe (numeryczne) ---")
+    desc = df.describe().T
+    print(tabulate(desc, headers='keys', tablefmt='fancy_grid', floatfmt=".2f"))
+
     print("\n--- Lista kolumn ---")
     print(df.columns.tolist())
+
     return df
+
 
 
 def identify_data_types(df):
@@ -44,7 +61,7 @@ def check_missing_values(df):
     plt.show()
 
 
-path_to_data = 'jobpredictor.csv'
+path_to_data = 'data/SalaryDataFinall.csv'
 df = load_data(path_to_data)
 num_cols, cat_cols = identify_data_types(df)
 check_missing_values(df)
