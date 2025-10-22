@@ -228,3 +228,4 @@ else:
 print(f"Liczba juniorów: {total_juniors}")
 
 
+
