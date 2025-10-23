@@ -211,6 +211,152 @@ def plot_company_size_vs_junior_salary(df):
 
 
 
+def _compute_avg_salary(df):
+    """liczy średnią pensję z dodatnich wartości w czterech kolumnach widełek."""
+    salary_cols = ['Salary Employment Min', 'Salary Employment Max', 'Salary B2B Min', 'Salary B2B Max']
+    missing = [c for c in salary_cols if c not in df.columns]
+    if missing:
+        raise KeyError(f"Brak kolumn wymaganych do liczenia pensji: {missing}")
+    out = df.copy()
+    out['Avg_Salary'] = out[salary_cols].where(out[salary_cols] > 0).mean(axis=1)
+    return out
+
+def plot_salary_distribution_by_contract_type(df):
+    """
+    Wykres rozkładu wynagrodzeń wg typu umowy.
+    Dla każdego rekordu wybieramy 'dominujący' typ (Employment lub B2B) i porównujemy rozkłady.
+    Zapis: salary_by_contract_type.png
+    """
+    try:
+        data = _compute_avg_salary(df)
+    except KeyError as e:
+        print(f"Nie mogę narysować wykresu kontraktów: {e}")
+        return
+
+    # Okreśa dominujący typ umowy (tam gdzie są sensowne dane > 0)
+    emp_cols = ['Salary Employment Min', 'Salary Employment Max']
+    b2b_cols = ['Salary B2B Min', 'Salary B2B Max']
+
+    emp_mean = data[emp_cols].where(data[emp_cols] > 0).mean(axis=1)
+    b2b_mean = data[b2b_cols].where(data[b2b_cols] > 0).mean(axis=1)
+
+    def pick_contract(e, b):
+        if pd.isna(e) and pd.isna(b):
+            return np.nan
+        if pd.isna(e):
+            return 'B2B'
+        if pd.isna(b):
+            return 'Employment'
+        return 'B2B' if b >= e else 'Employment'
+
+    data['Contract_Type'] = [pick_contract(e, b) for e, b in zip(emp_mean, b2b_mean)]
+    data = data.dropna(subset=['Avg_Salary', 'Contract_Type'])
+
+    if data.empty or data['Contract_Type'].nunique() == 0:
+        print("Brak danych do wykresu `salary_distribution_by_contract_type`.")
+        return
+
+    counts = data['Contract_Type'].value_counts(dropna=False).to_dict()
+    print("Liczebności wg typu umowy:", counts)
+
+    plt.figure(figsize=(10, 6))
+    sns.violinplot(
+        data=data,
+        x='Contract_Type',
+        y='Avg_Salary',
+        inner=None,
+        cut=0,
+        linewidth=1.0
+    )
+    sns.boxplot(
+        data=data,
+        x='Contract_Type',
+        y='Avg_Salary',
+        width=0.15,
+        showcaps=True,
+        boxprops={'facecolor': 'white', 'alpha': 0.7},
+        showfliers=False
+    )
+
+    # Adnotacje z n=
+    ax = plt.gca()
+    y_min, y_max = ax.get_ylim()
+    y_off = (y_max - y_min) * 0.03
+    for i, cat in enumerate(sorted(data['Contract_Type'].unique())):
+        n = int((data['Contract_Type'] == cat).sum())
+        plt.text(i, y_max - y_off, f"n={n}", ha='center', va='top', fontweight='bold')
+
+    plt.title('Rozkład zarobków wg typu umowy', fontsize=14, fontweight='bold')
+    plt.xlabel('Typ umowy', fontsize=12)
+    plt.ylabel('Średnia pensja', fontsize=12)
+    plt.grid(axis='y', alpha=0.25)
+    plt.tight_layout()
+    plt.savefig('salary_by_contract_type.png', dpi=300, bbox_inches='tight')
+    plt.show()
+
+
+def plot_company_size_vs_salary_scatter(df):
+    """
+    Zależność wielkości firmy i wynagrodzenia (scatter z regresją).
+    - Oś X: Company Size (log10)
+    - Oś Y: Avg_Salary
+    - Linia trendu (regresja liniowa) i korelacja Pearsona.
+    Zapis: company_size_vs_salary_scatter.png
+    """
+    if 'Company Size' not in df.columns:
+        print("Brak kolumny 'Company Size' — nie można narysować scattera.")
+        return
+
+    try:
+        data = _compute_avg_salary(df)
+    except KeyError as e:
+        print(f"Nie mogę narysować wykresu scatter: {e}")
+        return
+
+    # Przygotowanie danych
+    data = data[['Company Size', 'Avg_Salary']].copy()
+    # Odfiltrowanie niepoprawnych wartości
+    data['Company Size'] = pd.to_numeric(data['Company Size'], errors='coerce')
+    data = data[(data['Company Size'].notna()) & (data['Company Size'] > 0)]
+    data = data.dropna(subset=['Avg_Salary'])
+
+    if data.empty:
+        print("Brak danych do wykresu `company_size_vs_salary_scatter`.")
+        return
+
+    # Korelacja Pearsona (na oryginalnej skali X)
+    try:
+        r, p = stats.pearsonr(data['Company Size'], data['Avg_Salary'])
+        corr_label = f"r = {r:.2f}, p = {p:.3g}"
+    except Exception:
+        corr_label = None
+
+    # Wykres
+    plt.figure(figsize=(10, 6))
+    ax = sns.regplot(
+        data=data,
+        x='Company Size',
+        y='Avg_Salary',
+        scatter_kws={'alpha': 0.4, 'edgecolor': 'none'},
+        line_kws={'linewidth': 2}
+    )
+    ax.set_xscale('log')
+
+    if corr_label:
+        # Etykieta w prawym górnym rogu
+        x_min, x_max = data['Company Size'].min(), data['Company Size'].max()
+        y_min, y_max = data['Avg_Salary'].min(), data['Avg_Salary'].max()
+        plt.text(x_max, y_max, corr_label, ha='right', va='top', fontsize=10, bbox=dict(facecolor='white', alpha=0.7, edgecolor='none'))
+
+    plt.title('Wielkość firmy vs wynagrodzenie (log skala X)', fontsize=14, fontweight='bold')
+    plt.xlabel('Wielkość firmy (log10)', fontsize=12)
+    plt.ylabel('Średnia pensja', fontsize=12)
+    plt.grid(True, which='both', axis='both', alpha=0.25)
+    plt.tight_layout()
+    plt.savefig('company_size_vs_salary_scatter.png', dpi=300, bbox_inches='tight')
+    plt.show()
+
+
 
 path_to_data = '../data/SalaryDataFinall.csv'
 df = load_data(path_to_data)
@@ -218,6 +364,8 @@ num_cols, cat_cols = identify_data_types(df)
 check_missing_values(df)
 plot_salary_by_seniority(df)
 plot_company_size_vs_junior_salary(df)
+plot_salary_distribution_by_contract_type(df)
+plot_company_size_vs_salary_scatter(df)
 
 # policz i wypisz łączną liczbę juniorów (bez błędu gdy brak kolumny)
 if 'Seniority' in df.columns:
