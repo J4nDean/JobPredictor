@@ -5,6 +5,7 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from tabulate import tabulate
+from scipy import stats
 
 def load_data(path):
     try:
