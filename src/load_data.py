@@ -375,6 +375,3 @@ if 'Seniority' in df.columns:
 else:
     total_juniors = 0
 print(f"Liczba juniorów: {total_juniors}")
-
-
-
