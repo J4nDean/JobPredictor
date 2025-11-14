@@ -13,12 +13,7 @@ ROWS_PER_PAGE = 20
 
 @st.cache_data(show_spinner=False)
 def load_data() -> pd.DataFrame:
-    """Wczytaj i wstępnie przetwórz dane z pliku CSV.
-
-    - usuwa BOM z nazw kolumn,
-    - konwertuje kolumny numeryczne (Salary / Company Size) na liczby,
-    - nieprawidłowe wartości zapisuje jako NaN.
-    """
+    """Wczytaj i wstępnie przetwórz dane z pliku CSV."""
     data_path = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "data", DATA_FILENAME)
     )
@@ -37,11 +32,7 @@ def load_data() -> pd.DataFrame:
 
 
 def format_numeric_table(df: pd.DataFrame) -> pd.DataFrame:
-    """Sformatuj wartości numeryczne do ładnego wyświetlania w tabeli.
-
-    - -1 lub NaN -> "-" (brak danych),
-    - pozostałe -> liczby całkowite z separatorem tysięcy.
-    """
+    """Sformatuj wartości numeryczne do wyświetlania w tabeli."""
     formatted = df.copy()
 
     for col in formatted.select_dtypes(include=[np.number]).columns:
@@ -56,7 +47,7 @@ def format_numeric_table(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def paginate(df: pd.DataFrame, page_number: int, rows_per_page: int) -> Tuple[pd.DataFrame, int, int]:
-    """Zwróć odpowiedni wycinek danych dla danej strony oraz indeksy start/end."""
+    """Zwróć wycinek danych dla danej strony."""
     start_idx = (page_number - 1) * rows_per_page
     end_idx = start_idx + rows_per_page
     return df.iloc[start_idx:end_idx], start_idx, end_idx
