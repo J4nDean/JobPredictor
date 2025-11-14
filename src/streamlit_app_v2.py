@@ -5,17 +5,12 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-
-# --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Job Market Explorer", page_icon="📊", layout="wide")
 
-
-# --- STAŁE ---
 DATA_FILENAME = "SalaryDataFinall.csv"
 ROWS_PER_PAGE = 20
 
 
-# --- FUNKCJE POMOCNICZE ---
 @st.cache_data(show_spinner=False)
 def load_data() -> pd.DataFrame:
     """Wczytaj i wstępnie przetwórz dane z pliku CSV.
@@ -30,10 +25,8 @@ def load_data() -> pd.DataFrame:
 
     df = pd.read_csv(data_path, sep=";")
 
-    # Usunięcie BOM z nazw kolumn
     df.columns = df.columns.str.replace("\ufeff", "", regex=False)
 
-    # Konwersja kolumn numerycznych
     num_cols = [
         c for c in df.columns if any(substr in c for substr in ["Salary", "Company Size"])
     ]
@@ -78,7 +71,6 @@ def _set_page(name: str) -> None:
     st.session_state["page_number"] = 1
 
 
-# --- PODSTRONY ---
 def render_home(df: pd.DataFrame) -> None:
     st.title("📊 Job Market Explorer")
 
@@ -102,7 +94,6 @@ def render_home(df: pd.DataFrame) -> None:
         """
     )
 
-    # --- FILTRY ---
     st.subheader("Filtry ofert pracy")
     col_f1, col_f2, col_f3 = st.columns(3)
     with col_f1:
@@ -133,7 +124,6 @@ def render_home(df: pd.DataFrame) -> None:
         st.warning("Brak ofert dla wybranych filtrów.")
         return
 
-    # Opis aktywnych filtrów
     active_filters = []
     if tech_filter != "Wszystkie":
         active_filters.append(f"technologia = {tech_filter}")
@@ -147,7 +137,6 @@ def render_home(df: pd.DataFrame) -> None:
 
     st.caption(f"Liczba ofert po zastosowaniu filtrów: {len(filtered)}")
 
-    # Opcja pokazywania pełnego ID
     show_full_id = st.checkbox("Pokaż pełne ID", value=False)
 
     page_number = st.session_state.get("page_number", 1)
@@ -162,7 +151,6 @@ def render_home(df: pd.DataFrame) -> None:
 
     slice_df, start_idx, end_idx = paginate(df_view, page_number, ROWS_PER_PAGE)
 
-    # Dynamiczna wysokość tabeli
     visible_rows = len(slice_df)
     row_height = 34
     header_extra = 70
@@ -255,11 +243,11 @@ def render_salary_chart(df: pd.DataFrame) -> None:
             )
 
             st.bar_chart(avg_salaries_int)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             st.error(f"Nie udało się wygenerować wykresu: {e}")
 
 
-def render_eda(df: pd.DataFrame) -> None:  # noqa: ARG001 - df zostaje na przyszłość
+def render_eda(df: pd.DataFrame) -> None:
     _c1, _cmain, _c3 = st.columns([1, 3, 1])
     with _cmain:
         st.title("Eksploracyjna Analiza Danych (EDA)")
@@ -299,16 +287,12 @@ def render_eda(df: pd.DataFrame) -> None:  # noqa: ARG001 - df zostaje na przysz
         )
 
 
-# --- GŁÓWNA FUNKCJA APLIKACJI ---
-
 def main() -> None:
-    # Inicjalizacja stanu
     if "page" not in st.session_state:
         st.session_state["page"] = "Strona główna"
     if "page_number" not in st.session_state:
         st.session_state["page_number"] = 1
 
-    # SIDEBAR
     with st.sidebar:
         st.markdown("### Nawigacja")
         st.button(
@@ -330,7 +314,6 @@ def main() -> None:
             use_container_width=True,
         )
 
-    # ŁADOWANIE DANYCH
     try:
         df = load_data()
     except FileNotFoundError:
@@ -342,11 +325,10 @@ def main() -> None:
             f"Ścieżka sprawdzana: {data_path}"
         )
         return
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         st.error(f"Wystąpił błąd podczas wczytywania pliku: {e}")
         return
 
-    # ROUTING
     current = _current_page()
     if current == "Strona główna":
         render_home(df)
