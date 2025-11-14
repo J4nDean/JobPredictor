@@ -133,82 +133,88 @@ def main():
 
     # ---------- WYKRES ZAROBKÓW WG TECHNOLOGII ----------
     elif current_page == "Wykres zarobków wg technologii":
-        st.title("📈 Wykres zarobków juniorów wg technologii")
+        # Zawężenie treści do środkowej kolumny, aby nie rozciągać na pełną szerokość
+        _c1, _cmain, _c3 = st.columns([1, 3, 1])
+        with _cmain:
+            st.title("📈 Wykres zarobków juniorów wg technologii")
 
-        st.markdown("""
-        Wykres przedstawia średnie maksymalne wynagrodzenie dla juniorów w zależności od technologii.
-        Możesz wybrać, czy chcesz zobaczyć dane łączne, dla umów o pracę, czy kontraktów B2B.
-        """)
+            st.markdown("""
+            Wykres przedstawia średnie maksymalne wynagrodzenie dla juniorów w zależności od technologii.
+            Możesz wybrać, czy chcesz zobaczyć dane łączne, dla umów o pracę, czy kontraktów B2B.
+            """)
 
-        try:
-            contract_type = st.radio("Wybierz typ umowy:", ("Łącznie", "Umowa o pracę", "B2B"))
-            seniority_level = st.selectbox("Wybierz poziom zaawansowania:", ("Wszystkie", "junior", "mid", "senior", "expert"))
+            try:
+                contract_type = st.radio("Wybierz typ umowy:", ("Łącznie", "Umowa o pracę", "B2B"))
+                seniority_level = st.selectbox("Wybierz poziom zaawansowania:", ("Wszystkie", "junior", "mid", "senior", "expert"))
 
-            if seniority_level != "Wszystkie":
-                filtered_df = df[df["Seniority"] == seniority_level].copy()
-            else:
-                filtered_df = df.copy()
+                if seniority_level != "Wszystkie":
+                    filtered_df = df[df["Seniority"] == seniority_level].copy()
+                else:
+                    filtered_df = df.copy()
 
-            # Funkcja pomocnicza: średnia ignorując wartości -1 (ale nie usuwając wierszy)
-            def mean_excluding_minus_one(series):
-                vals = series[series != -1].dropna()
-                if len(vals) == 0:
-                    return np.nan
-                return vals.mean()
+                # Funkcja pomocnicza: średnia ignorując wartości -1 (ale nie usuwając wierszy)
+                def mean_excluding_minus_one(series):
+                    vals = series[series != -1].dropna()
+                    if len(vals) == 0:
+                        return np.nan
+                    return vals.mean()
 
-            if contract_type == "Umowa o pracę":
-                avg_salaries = filtered_df.groupby("Technology")["Salary Employment Max"].apply(mean_excluding_minus_one)
-            elif contract_type == "B2B":
-                avg_salaries = filtered_df.groupby("Technology")["Salary B2B Max"].apply(mean_excluding_minus_one)
-            else:  # Łącznie - traktujemy każdą nie- -1 wartość z dwóch kolumn jako osobny rekord
-                stacked = pd.DataFrame({
-                    'Technology': np.concatenate([filtered_df['Technology'].values, filtered_df['Technology'].values]),
-                    'Salary': np.concatenate([filtered_df['Salary Employment Max'].values, filtered_df['Salary B2B Max'].values])
-                })
-                stacked = stacked[stacked['Salary'] != -1]
-                avg_salaries = stacked.groupby('Technology')['Salary'].mean()
+                if contract_type == "Umowa o pracę":
+                    avg_salaries = filtered_df.groupby("Technology")["Salary Employment Max"].apply(mean_excluding_minus_one)
+                elif contract_type == "B2B":
+                    avg_salaries = filtered_df.groupby("Technology")["Salary B2B Max"].apply(mean_excluding_minus_one)
+                else:  # Łącznie - traktujemy każdą nie- -1 wartość z dwóch kolumn jako osobny rekord
+                    stacked = pd.DataFrame({
+                        'Technology': np.concatenate([filtered_df['Technology'].values, filtered_df['Technology'].values]),
+                        'Salary': np.concatenate([filtered_df['Salary Employment Max'].values, filtered_df['Salary B2B Max'].values])
+                    })
+                    stacked = stacked[stacked['Salary'] != -1]
+                    avg_salaries = stacked.groupby('Technology')['Salary'].mean()
 
-            # Usuń NaN przed rysowaniem i konwertuj do int
-            avg_salaries = avg_salaries.dropna().sort_values(ascending=False)
-            avg_salaries = avg_salaries.astype(int)
+                # Usuń NaN przed rysowaniem i konwertuj do int
+                avg_salaries = avg_salaries.dropna().sort_values(ascending=False)
+                avg_salaries = avg_salaries.astype(int)
 
-            st.bar_chart(avg_salaries)
-        except Exception as e:
-            st.error(f"Nie udało się wygenerować wykresu: {e}")
+                st.bar_chart(avg_salaries)
+            except Exception as e:
+                st.error(f"Nie udało się wygenerować wykresu: {e}")
 
     # ---------- STRONA EDA ----------
     elif current_page == "EDA":
-        st.title("Eksploracyjna Analiza Danych (EDA)")
+        # Zawężenie treści do środkowej kolumny, aby nie rozciągać na pełną szerokość
+        _c1, _cmain, _c3 = st.columns([1, 3, 1])
+        with _cmain:
+            st.title("Eksploracyjna Analiza Danych (EDA)")
 
-        st.markdown("""
-        Eksploracyjna analiza danych (EDA) pozwala zrozumieć rozkład wynagrodzeń
-        w zależności od wielkości firmy oraz poziomu zaawansowania.
+            st.markdown("""
+            Eksploracyjna analiza danych (EDA) pozwala zrozumieć rozkład wynagrodzeń
+            w zależności od wielkości firmy oraz poziomu zaawansowania.
 
-        Poniżej prezentujemy dwa wybrane diagramy przygotowane wcześniej:
-        - pensje juniorów względem wielkości firmy,
-        - zarobki względem poziomu zaawansowania.
-        """)
+            Poniżej prezentujemy dwa wybrane diagramy przygotowane wcześniej:
+            - pensje juniorów względem wielkości firmy,
+            - zarobki względem poziomu zaawansowania.
+            """)
 
-        img1_path = os.path.join(os.path.dirname(__file__), 'company_size_vs_junior_salary.png')
-        img2_path = os.path.join(os.path.dirname(__file__), 'salary_by_seniority.png')
+            img1_path = os.path.join(os.path.dirname(__file__), 'company_size_vs_junior_salary.png')
+            img2_path = os.path.join(os.path.dirname(__file__), 'salary_by_seniority.png')
 
-        if os.path.exists(img1_path):
-            st.image(img1_path, caption="Pensje juniorów względem wielkości firmy", use_column_width=True)
-        else:
-            st.info("Brak pliku company_size_vs_junior_salary.png w katalogu src.")
+            if os.path.exists(img1_path):
+                st.image(img1_path, caption="Pensje juniorów względem wielkości firmy")
+            else:
+                st.info("Brak pliku company_size_vs_junior_salary.png w katalogu src.")
 
-        if os.path.exists(img2_path):
-            st.image(img2_path, caption="Zarobki względem zaawansowania", use_column_width=True)
-        else:
-            st.info("Brak pliku salary_by_seniority.png w katalogu src.")
+            if os.path.exists(img2_path):
+                st.image(img2_path, caption="Zarobki względem zaawansowania")
+            else:
+                st.info("Brak pliku salary_by_seniority.png w katalogu src.")
 
-        st.markdown("""
-        Pierwszy wykres pokazuje, jak średnia pensja juniorów zmienia się wraz z wielkością firmy
-        (od mikro firm po bardzo duże organizacje).
+            st.markdown("""
+            Pierwszy wykres pokazuje, jak średnia pensja juniorów zmienia się wraz z wielkością firmy
+            (od mikro firm po bardzo duże organizacje).
 
-        Drugi wykres porównuje rozkład wynagrodzeń między poziomami junior, mid, senior i expert,
-        co pomaga zobaczyć, jak rośnie wynagrodzenie wraz z doświadczeniem.
-        """)
+            Drugi wykres porównuje rozkład wynagrodzeń między poziomami junior, mid, senior i expert,
+            co pomaga zobaczyć, jak rośnie wynagrodzenie wraz z doświadczeniem.
+            """)
 
 
 if __name__ == "__main__":
