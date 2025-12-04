@@ -276,7 +276,77 @@ def render_eda(df: pd.DataFrame) -> None:
             co pomaga zobaczyć, jak rośnie wynagrodzenie wraz z doświadczeniem.
             """
         )
+def render_calculator(df: pd.DataFrame) -> None:
+    st.title("Kalkulator Rynkowy")
+    st.markdown("""
+    Sprawdź, jak kształtują się stawki rynkowe dla konkretnego stanowiska.
+    Wybierz parametry, aby zobaczyć medianę oraz zakres wynagrodzeń.
+    """)
 
+    # --- Filtry ---
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        tech = st.selectbox("Technologia", options=sorted(df["Technology"].unique()))
+    with c2:
+        seniority = st.selectbox("Poziom", options=sorted(df["Seniority"].unique()))
+    with c3:
+        # Dodajemy opcję "Cała Polska" dla lokalizacji
+        loc_options = ["Cała Polska"] + sorted(df["Location"].unique().tolist())
+        location = st.selectbox("Lokalizacja", options=loc_options)
+
+    # --- Wybór typu umowy ---
+    contract_type = st.radio("Typ umowy do analizy:", ["B2B", "Umowa o pracę"], horizontal=True)
+
+    # --- Przygotowanie danych ---
+    mask = (df["Technology"] == tech) & (df["Seniority"] == seniority)
+    if location != "Cała Polska":
+        mask = mask & (df["Location"] == location)
+    
+    filtered = df[mask].copy()
+
+    # Wybór odpowiedniej kolumny z zarobkami (analizujemy górne widełki - Max)
+    col_name = "Salary B2B Max" if contract_type == "B2B" else "Salary Employment Max"
+
+    # Czyszczenie danych (usuwamy -1 i NaN)
+    salaries = filtered[col_name]
+    valid_salaries = salaries[(salaries > 0) & (salaries.notna())]
+
+    st.divider()
+
+    # --- Wyświetlanie wyników ---
+    if valid_salaries.empty:
+        st.warning("Niestety, brak wystarczających danych dla wybranych kryteriów.")
+        return
+
+    # Obliczenia statystyczne
+    median_val = int(valid_salaries.median())
+    q25_val = int(valid_salaries.quantile(0.25))
+    q75_val = int(valid_salaries.quantile(0.75))
+    count_val = len(valid_salaries)
+
+    # Wyświetlenie metryk
+    st.subheader(f"Wyniki dla: {tech} / {seniority}")
+    st.caption(f"Analiza na podstawie {count_val} ofert.")
+
+    m1, m2, m3 = st.columns(3)
+    with m1:
+        st.metric(label="Dolny kwartyl (25%)", value=f"{q25_val:,}".replace(",", " "))
+        st.caption("Początek stawek rynkowych")
+    with m2:
+        st.metric(label="Mediana (Środek)", value=f"{median_val:,}".replace(",", " "), delta_color="off")
+        st.caption("Najczęstsza stawka rynkowa")
+    with m3:
+        st.metric(label="Górny kwartyl (75%)", value=f"{q75_val:,}".replace(",", " "))
+        st.caption("Oferty powyżej średniej")
+
+    # Opcjonalnie: Prosty wykres rozkładu (histogram)
+    st.write("")
+    st.write("Rozkład stawek w ofertach:")
+    try:
+        # Używamy prostego bar_chart, sortując dane dla lepszej czytelności
+        st.bar_chart(valid_salaries.value_counts().sort_index(), color="#4CAF50")
+    except Exception:
+        pass
 
 def main() -> None:
     if "page" not in st.session_state:
@@ -292,12 +362,21 @@ def main() -> None:
             on_click=lambda: _set_page("Strona główna"),
             use_container_width=True,
         )
+        # --- NOWY PRZYCISK ---
+        st.button(
+            "🧮 Kalkulator Rynkowy",
+            key="calc_button",
+            on_click=lambda: _set_page("Kalkulator"),
+            use_container_width=True,
+        )
+        # ---------------------
         st.button(
             "Wykres zarobków wg technologii",
             key="chart_button",
             on_click=lambda: _set_page("Wykres zarobków wg technologii"),
             use_container_width=True,
         )
+        # ... (reszta przycisków)
         st.button(
             "EDA - Eksploracyjna Analiza Danych",
             key="eda_button",
@@ -323,6 +402,8 @@ def main() -> None:
     current = _current_page()
     if current == "Strona główna":
         render_home(df)
+    elif current == "Kalkulator":      # <--- NOWY WARUNEK
+        render_calculator(df)          # <--- WYWOŁANIE FUNKCJI
     elif current == "Wykres zarobków wg technologii":
         render_salary_chart(df)
     elif current == "EDA":
