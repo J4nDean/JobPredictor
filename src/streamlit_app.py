@@ -1,220 +1,362 @@
-import streamlit as st
-import pandas as pd
 import os
+from typing import Tuple
+
 import numpy as np
+import pandas as pd
+import streamlit as st
 
-# Ustaw szeroki układ strony, aby tabela mogła zająć maksymalną szerokość
-st.set_page_config(page_title="Job Predictor", page_icon="📊", layout="wide")
+# Importy do Machine Learning (Nowe)
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import mean_absolute_error, r2_score
+
+# --- KONFIGURACJA ---
+st.set_page_config(page_title="Job Market Explorer & AI", page_icon="📊", layout="wide")
+
+DATA_FILENAME = "SalaryDataFinall.csv"
+ROWS_PER_PAGE = 20
 
 
-def main():
-    # nie ustawiamy tutaj tytułu globalnie, tylko per-strona niżej
+# ---------------------------------------------------------
+# FUNKCJE DANYCH (Wspólne)
+# ---------------------------------------------------------
 
-    if "page" not in st.session_state:
-        st.session_state["page"] = "Strona główna"
-    if "page_number" not in st.session_state:
-        st.session_state["page_number"] = 1
+@st.cache_data(show_spinner=False)
+def load_data() -> pd.DataFrame:
+    """Wczytaj i wstępnie przetwórz dane z pliku CSV."""
+    # Próba znalezienia pliku w folderze data/ lub bieżącym
+    paths_to_check = [
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", DATA_FILENAME)),
+        DATA_FILENAME
+    ]
 
-    def set_page(name):
-        st.session_state["page"] = name
-        st.session_state["page_number"] = 1
+    data_path = None
+    for path in paths_to_check:
+        if os.path.exists(path):
+            data_path = path
+            break
 
-    current_page = st.session_state.get("page", "Strona główna")
+    if data_path is None:
+        raise FileNotFoundError(f"Nie znaleziono pliku {DATA_FILENAME}")
 
-    # ---------- SIDEBAR (NAWIGACJA) ----------
-    with st.sidebar:
-        st.markdown("### Nawigacja")
-        st.button("Strona główna", key="home_button", on_click=lambda: set_page("Strona główna"), use_container_width=True)
-        st.button("Wykres zarobków wg technologii", key="chart_button", on_click=lambda: set_page("Wykres zarobków wg technologii"), use_container_width=True)
-        st.button("EDA - Eksploracyjna Analiza Danych", key="eda_button", on_click=lambda: set_page("EDA"), use_container_width=True)
+    df = pd.read_csv(data_path, sep=";")
 
-    # ---------- GŁÓWNA TREŚĆ ----------
-    data_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data', 'SalaryDataFinall.csv'))
+    # Usuwanie BOM (Byte Order Mark) jeśli istnieje
+    df.columns = df.columns.str.replace("\ufeff", "", regex=False)
 
-    try:
-        df = pd.read_csv(data_path, sep=';')
-    except FileNotFoundError:
-        st.error("Nie znaleziono pliku z danymi. Upewnij się, że plik znajduje się w folderze 'data'.\nŚcieżka sprawdzana: %s" % data_path)
-        return
-    except Exception as e:
-        st.error(f"Wystąpił błąd podczas wczytywania pliku: {e}")
-        return
-
-    df.columns = df.columns.str.replace('\ufeff', '')
-    num_cols = [c for c in df.columns if any(substr in c for substr in ['Salary', 'Company Size'])]
+    # Konwersja kolumn liczbowych
+    num_cols = [
+        c for c in df.columns if any(substr in c for substr in ["Salary", "Company Size"])
+    ]
     for c in num_cols:
-        df[c] = pd.to_numeric(df[c], errors='coerce')
+        df[c] = pd.to_numeric(df[c], errors="coerce")
 
-    # ---------- STRONA GŁÓWNA ----------
-    if current_page == "Strona główna":
-        st.title("📊 Job Predictor")
+    return df
 
-        st.subheader("O zbiorze danych")
-        st.markdown("""
-        Ten zbiór danych zawiera oferty pracy dla inżynierów oprogramowania w Polsce
-        z okresu od **września 2023 do lipca 2024**.
 
-        Główne kolumny:
-        - **ID** – unikalny identyfikator oferty,
-        - **Company / Company Size** – nazwa i wielkość firmy,
-        - **Location** – lokalizacja stanowiska,
-        - **Technology** – główna technologia / język programowania,
-        - **Seniority** – poziom zaawansowania (junior, mid, senior, expert),
-        - **Salary Employment Min / Max** – widełki wynagrodzenia na umowę o pracę,
-        - **Salary B2B Min / Max** – widełki wynagrodzenia na kontrakt B2B.
+# ---------------------------------------------------------
+# NOWE FUNKCJE DLA MODELU ML (Random Forest)
+# ---------------------------------------------------------
 
-        Dane pozwalają analizować rynek pracy pod kątem miasta, technologii,
-        poziomu doświadczenia i formy zatrudnienia.
-        """)
+@st.cache_data
+def prepare_training_data(df):
+    """
+    Transformuje dane do formatu wymaganego przez ML:
+    Rozbija wiersze na osobne przypadki B2B i UoP.
+    """
+    data_entries = []
 
-        # --- FILTRY NAD TABELĄ ---
-        st.subheader("Filtry ofert pracy")
-        col_f1, col_f2, col_f3 = st.columns(3)
-        with col_f1:
-            tech_filter = st.selectbox(
-                "Technologia:",
-                options=["Wszystkie"] + sorted(df["Technology"].dropna().unique().tolist())
-            )
-        with col_f2:
-            loc_filter = st.selectbox(
-                "Lokalizacja:",
-                options=["Wszystkie"] + sorted(df["Location"].dropna().unique().tolist())
-            )
-        with col_f3:
-            sen_filter = st.selectbox(
-                "Poziom zaawansowania:",
-                options=["Wszystkie"] + sorted(df["Seniority"].dropna().unique().tolist())
-            )
+    for _, row in df.iterrows():
+        tech = row['Technology']
+        seniority = row['Seniority']
+        loc = row['Location']
 
-        filtered = df.copy()
-        if tech_filter != "Wszystkie":
-            filtered = filtered[filtered["Technology"] == tech_filter]
-        if loc_filter != "Wszystkie":
-            filtered = filtered[filtered["Location"] == loc_filter]
-        if sen_filter != "Wszystkie":
-            filtered = filtered[filtered["Seniority"] == sen_filter]
+        # 1. Sprawdzamy B2B (bierzemy średnią z widełek)
+        if row['Salary B2B Min'] > 0 and row['Salary B2B Max'] > 0:
+            avg_salary = (row['Salary B2B Min'] + row['Salary B2B Max']) / 2
+            data_entries.append({
+                'Technology': tech,
+                'Seniority': seniority,
+                'Location': loc,
+                'Contract Type': 'B2B',
+                'Salary': avg_salary
+            })
 
-        # licznik rekordów po filtrach
-        st.caption(f"Liczba ofert po zastosowaniu filtrów: {len(filtered)}")
-        # Opcja pokazywania pełnego ID
-        show_full_id = st.checkbox("Pokaż pełne ID", value=False)
-        # Tabela z paginacją na przefiltrowanych danych
-        page_number = st.session_state.get("page_number", 1)
-        rows_per_page = 20
-        start_idx = (page_number - 1) * rows_per_page
-        end_idx = start_idx + rows_per_page
+        # 2. Sprawdzamy UoP (Employment)
+        if row['Salary Employment Min'] > 0 and row['Salary Employment Max'] > 0:
+            avg_salary = (row['Salary Employment Min'] + row['Salary Employment Max']) / 2
+            data_entries.append({
+                'Technology': tech,
+                'Seniority': seniority,
+                'Location': loc,
+                'Contract Type': 'Employment',
+                'Salary': avg_salary
+            })
 
-        df_view = filtered.copy()
-        # Skracanie ID jeśli wyłączone pełne
-        if not show_full_id and 'ID' in df_view.columns:
-            df_view['ID'] = df_view['ID'].astype(str).apply(lambda x: (x[:8] + '…') if len(x) > 9 else x)
-        for col in df_view.select_dtypes(include=[np.number]).columns:
-            df_view[col] = df_view[col].apply(lambda x: '-1' if pd.isna(x) or int(x) == -1 else f"{int(x):,}")
+    return pd.DataFrame(data_entries)
 
-        slice_df = df_view.iloc[start_idx:end_idx]
-        # Dynamiczna wysokość aby wszystkie rekordy (do 20) były w pełni widoczne bez scrolla
-        visible_rows = len(slice_df)
-        row_height = 34  # przybliżona wysokość jednego wiersza w px
-        header_extra = 70  # miejsce na nagłówek i marginesy
-        dynamic_height = visible_rows * row_height + header_extra
-        try:
-            st.dataframe(slice_df, use_container_width=True, hide_index=True, height=dynamic_height)
-        except TypeError:
-            st.dataframe(slice_df, use_container_width=True, height=dynamic_height)
 
-        # Szersze odstępy: "Następna" maksymalnie po prawej stronie
-        col_prev, col_spacer, col_next = st.columns([2, 14, 2])
-        with col_prev:
-            if st.button("Poprzednia", key="prev") and page_number > 1:
-                st.session_state["page_number"] = page_number - 1
-        with col_next:
-            if st.button("Następna", key="next") and end_idx < len(filtered):
-                st.session_state["page_number"] = page_number + 1
+@st.cache_resource
+def build_and_train_model(data):
+    """
+    Trenuje model Random Forest. Używa cache, aby nie trenować przy każdym kliknięciu.
+    """
+    X = data[['Technology', 'Seniority', 'Location', 'Contract Type']]
+    y = data['Salary']
 
-    # ---------- WYKRES ZAROBKÓW WG TECHNOLOGII ----------
-    elif current_page == "Wykres zarobków wg technologii":
-        # Zawężenie treści do środkowej kolumny, aby nie rozciągać na pełną szerokość
-        _c1, _cmain, _c3 = st.columns([1, 3, 1])
-        with _cmain:
-            st.title("📈 Wykres zarobków juniorów wg technologii")
+    # Podział
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
 
-            st.markdown("""
-            Wykres przedstawia średnie maksymalne wynagrodzenie dla juniorów w zależności od technologii.
-            Możesz wybrać, czy chcesz zobaczyć dane łączne, dla umów o pracę, czy kontraktów B2B.
-            """)
+    # Preprocessing
+    categorical_features = ['Technology', 'Seniority', 'Location', 'Contract Type']
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features)
+        ])
 
-            try:
-                contract_type = st.radio("Wybierz typ umowy:", ("Łącznie", "Umowa o pracę", "B2B"))
-                seniority_level = st.selectbox("Wybierz poziom zaawansowania:", ("Wszystkie", "junior", "mid", "senior", "expert"))
+    # Model Pipeline
+    model = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('regressor', RandomForestRegressor(n_estimators=100, random_state=42))
+    ])
 
-                if seniority_level != "Wszystkie":
-                    filtered_df = df[df["Seniority"] == seniority_level].copy()
-                else:
-                    filtered_df = df.copy()
+    model.fit(X_train, y_train)
 
-                # Funkcja pomocnicza: średnia ignorując wartości -1 (ale nie usuwając wierszy)
-                def mean_excluding_minus_one(series):
-                    vals = series[series != -1].dropna()
-                    if len(vals) == 0:
-                        return np.nan
-                    return vals.mean()
+    # Metryki
+    y_pred = model.predict(X_test)
+    mae = mean_absolute_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
 
-                if contract_type == "Umowa o pracę":
-                    avg_salaries = filtered_df.groupby("Technology")["Salary Employment Max"].apply(mean_excluding_minus_one)
-                elif contract_type == "B2B":
-                    avg_salaries = filtered_df.groupby("Technology")["Salary B2B Max"].apply(mean_excluding_minus_one)
-                else:  # Łącznie - traktujemy każdą nie- -1 wartość z dwóch kolumn jako osobny rekord
-                    stacked = pd.DataFrame({
-                        'Technology': np.concatenate([filtered_df['Technology'].values, filtered_df['Technology'].values]),
-                        'Salary': np.concatenate([filtered_df['Salary Employment Max'].values, filtered_df['Salary B2B Max'].values])
-                    })
-                    stacked = stacked[stacked['Salary'] != -1]
-                    avg_salaries = stacked.groupby('Technology')['Salary'].mean()
+    return model, mae, r2
 
-                # Usuń NaN przed rysowaniem i konwertuj do int
-                avg_salaries = avg_salaries.dropna().sort_values(ascending=False)
-                avg_salaries = avg_salaries.astype(int)
 
-                st.bar_chart(avg_salaries)
-            except Exception as e:
-                st.error(f"Nie udało się wygenerować wykresu: {e}")
+# ---------------------------------------------------------
+# HELPERY UI (Ze starego kodu)
+# ---------------------------------------------------------
 
-    # ---------- STRONA EDA ----------
-    elif current_page == "EDA":
-        # Zawężenie treści do środkowej kolumny, aby nie rozciągać na pełną szerokość
-        _c1, _cmain, _c3 = st.columns([1, 3, 1])
-        with _cmain:
-            st.title("Eksploracyjna Analiza Danych (EDA)")
+def format_numeric_table(df: pd.DataFrame) -> pd.DataFrame:
+    """Sformatuj wartości numeryczne do wyświetlania w tabeli."""
+    formatted = df.copy()
+    for col in formatted.select_dtypes(include=[np.number]).columns:
+        def _fmt(x):
+            if pd.isna(x) or int(x) == -1:
+                return "-"
+            return f"{int(x):,}".replace(",", " ")
 
-            st.markdown("""
-            Eksploracyjna analiza danych (EDA) pozwala zrozumieć rozkład wynagrodzeń
-            w zależności od wielkości firmy oraz poziomu zaawansowania.
+        formatted[col] = formatted[col].apply(_fmt)
+    return formatted
 
-            Poniżej prezentujemy dwa wybrane diagramy przygotowane wcześniej:
-            - pensje juniorów względem wielkości firmy,
-            - zarobki względem poziomu zaawansowania.
-            """)
 
-            img1_path = os.path.join(os.path.dirname(__file__), 'company_size_vs_junior_salary.png')
-            img2_path = os.path.join(os.path.dirname(__file__), 'salary_by_seniority.png')
+def paginate(df: pd.DataFrame, page_number: int, rows_per_page: int) -> Tuple[pd.DataFrame, int, int]:
+    start_idx = (page_number - 1) * rows_per_page
+    end_idx = start_idx + rows_per_page
+    return df.iloc[start_idx:end_idx], start_idx, end_idx
 
-            if os.path.exists(img1_path):
-                st.image(img1_path, caption="Pensje juniorów względem wielkości firmy")
-            else:
-                st.info("Brak pliku company_size_vs_junior_salary.png w katalogu src.")
 
-            if os.path.exists(img2_path):
-                st.image(img2_path, caption="Zarobki względem zaawansowania")
-            else:
-                st.info("Brak pliku salary_by_seniority.png w katalogu src.")
+def _current_page() -> str:
+    return st.session_state.get("page", "Strona główna")
 
-            st.markdown("""
-            Pierwszy wykres pokazuje, jak średnia pensja juniorów zmienia się wraz z wielkością firmy
-            (od mikro firm po bardzo duże organizacje).
 
-            Drugi wykres porównuje rozkład wynagrodzeń między poziomami junior, mid, senior i expert,
-            co pomaga zobaczyć, jak rośnie wynagrodzenie wraz z doświadczeniem.
-            """)
+def _set_page(name: str) -> None:
+    st.session_state["page"] = name
+    st.session_state["page_number"] = 1
+
+
+# ---------------------------------------------------------
+# STRONY APLIKACJI
+# ---------------------------------------------------------
+
+def render_home(df: pd.DataFrame) -> None:
+    st.title("📊 Job Market Explorer")
+    st.markdown("Przegląd ofert pracy (2023-2024).")
+
+    # Filtry
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        tech_filter = st.selectbox("Technologia:", ["Wszystkie"] + sorted(df["Technology"].dropna().unique().tolist()))
+    with col2:
+        loc_filter = st.selectbox("Lokalizacja:", ["Wszystkie"] + sorted(df["Location"].dropna().unique().tolist()))
+    with col3:
+        sen_filter = st.selectbox("Poziom:", ["Wszystkie"] + sorted(df["Seniority"].dropna().unique().tolist()))
+
+    filtered = df.copy()
+    if tech_filter != "Wszystkie": filtered = filtered[filtered["Technology"] == tech_filter]
+    if loc_filter != "Wszystkie": filtered = filtered[filtered["Location"] == loc_filter]
+    if sen_filter != "Wszystkie": filtered = filtered[filtered["Seniority"] == sen_filter]
+
+    st.caption(f"Liczba ofert: {len(filtered)}")
+
+    # Tabela
+    page_number = st.session_state.get("page_number", 1)
+    df_view = format_numeric_table(filtered)
+    if "ID" in df_view.columns:
+        df_view["ID"] = df_view["ID"].astype(str).apply(lambda x: (x[:8] + "…") if len(x) > 9 else x)
+
+    slice_df, start_idx, end_idx = paginate(df_view, page_number, ROWS_PER_PAGE)
+    st.dataframe(slice_df, use_container_width=True, hide_index=True)
+
+    # Paginacja
+    c_prev, _, c_next = st.columns([1, 10, 1])
+    if c_prev.button("Poprzednia") and page_number > 1:
+        st.session_state["page_number"] -= 1
+        st.rerun()
+    if c_next.button("Następna") and end_idx < len(filtered):
+        st.session_state["page_number"] += 1
+        st.rerun()
+
+
+def render_salary_chart(df: pd.DataFrame) -> None:
+    st.title("📈 Wykres zarobków wg technologii")
+    contract_type = st.radio("Typ umowy:", ("Umowa o pracę", "B2B"), horizontal=True)
+    seniority = st.selectbox("Poziom:", ["Wszystkie", "junior", "mid", "senior", "expert"])
+
+    filtered = df if seniority == "Wszystkie" else df[df["Seniority"] == seniority]
+    col_target = "Salary Employment Max" if contract_type == "Umowa o pracę" else "Salary B2B Max"
+
+    # Obliczanie średniej bez -1
+    avg = filtered[filtered[col_target] > 0].groupby("Technology")[col_target].mean().sort_values(ascending=False)
+
+    if not avg.empty:
+        st.bar_chart(avg)
+    else:
+        st.warning("Brak danych dla wybranych kryteriów.")
+
+
+def render_eda(df: pd.DataFrame) -> None:
+    st.title("Eksploracyjna Analiza Danych (EDA)")
+    st.info("Tutaj znajdują się statyczne analizy wygenerowane wcześniej.")
+
+    c1, c2 = st.columns(2)
+    img1 = os.path.join(os.path.dirname(__file__), "company_size_vs_junior_salary.png")
+    img2 = os.path.join(os.path.dirname(__file__), "salary_by_seniority.png")
+
+    if os.path.exists(img1): c1.image(img1, caption="Junior vs Wielkość Firmy")
+    if os.path.exists(img2): c2.image(img2, caption="Zarobki vs Seniority")
+
+
+def render_calculator_stats(df: pd.DataFrame) -> None:
+    """Stary kalkulator oparty na medianie i kwartylach."""
+    st.title("🧮 Kalkulator Rynkowy (Statystyka)")
+    st.markdown("Analiza historycznych danych (Mediana / Kwartyle).")
+
+    c1, c2, c3 = st.columns(3)
+    tech = c1.selectbox("Technologia", sorted(df["Technology"].unique()))
+    seniority = c2.selectbox("Poziom", sorted(df["Seniority"].unique()))
+    loc = c3.selectbox("Lokalizacja", ["Cała Polska"] + sorted(df["Location"].unique().tolist()))
+    contract = st.radio("Umowa", ["B2B", "Umowa o pracę"], horizontal=True)
+
+    mask = (df["Technology"] == tech) & (df["Seniority"] == seniority)
+    if loc != "Cała Polska": mask &= (df["Location"] == loc)
+
+    col_name = "Salary B2B Max" if contract == "B2B" else "Salary Employment Max"
+    vals = df[mask][col_name]
+    valid = vals[vals > 0]
+
+    st.divider()
+    if valid.empty:
+        st.warning("Brak danych historycznych dla tych kryteriów.")
+        return
+
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Min (25%)", f"{int(valid.quantile(0.25)):,} PLN".replace(",", " "))
+    m2.metric("Mediana", f"{int(valid.median()):,} PLN".replace(",", " "))
+    m3.metric("Max (75%)", f"{int(valid.quantile(0.75)):,} PLN".replace(",", " "))
+
+
+# ---------------------------------------------------------
+# NOWA STRONA: ESTYMATOR AI (Random Forest)
+# ---------------------------------------------------------
+def render_ml_estimator(raw_df: pd.DataFrame) -> None:
+    st.title("Estymator Zarobków AI")
+    st.markdown("""
+    Ten moduł wykorzystuje **uczenie maszynowe (Random Forest)**, aby oszacować potencjalne wynagrodzenie.
+    Model "nauczył się" zależności między technologią, miastem a zarobkami na podstawie całego zbioru danych.
+    """)
+
+    # 1. Przygotowanie danych
+    clean_df = prepare_training_data(raw_df)
+
+    # 2. Trening (Cache zadba, by nie robić tego ciągle)
+    with st.spinner('Trwa trenowanie modelu AI... (może chwilę potrwać przy pierwszym uruchomieniu)'):
+        model, mae, r2 = build_and_train_model(clean_df)
+
+    # Wyświetlenie jakości modelu
+    with st.expander("ℹ️ Informacje o jakości modelu (Metryki)"):
+        c1, c2 = st.columns(2)
+        c1.metric("Średni błąd (MAE)", f"{mae:,.0f} PLN", help="O tyle średnio model myli się w przewidywaniach.")
+        c2.metric("Dopasowanie (R2 Score)", f"{r2:.2f}",
+                  help="1.0 to ideał. Powyżej 0.5 w płacach to często dobry wynik.")
+
+    st.divider()
+
+    st.subheader("Wprowadź parametry stanowiska")
+
+    # Formularz
+    col1, col2 = st.columns(2)
+    with col1:
+        tech_input = st.selectbox("Technologia", options=sorted(clean_df['Technology'].unique()), key="ml_tech")
+        seniority_input = st.selectbox("Doświadczenie", options=['junior', 'mid', 'senior', 'expert'], key="ml_sen")
+    with col2:
+        loc_input = st.selectbox("Lokalizacja", options=sorted(clean_df['Location'].unique()), key="ml_loc")
+        contract_input = st.selectbox("Typ umowy", options=['B2B', 'Employment'], key="ml_con")
+
+    if st.button("🔮 Oszacuj wynagrodzenie", type="primary"):
+        # Przygotowanie danych wejściowych
+        input_data = pd.DataFrame({
+            'Technology': [tech_input],
+            'Seniority': [seniority_input],
+            'Location': [loc_input],
+            'Contract Type': [contract_input]
+        })
+
+        prediction = model.predict(input_data)[0]
+
+        st.success(f"Szacowane wynagrodzenie: **{prediction:,.2f} PLN**")
+        if contract_input == 'B2B':
+            st.caption("Jest to szacowana kwota netto na fakturze (bez VAT).")
+        else:
+            st.caption("Jest to szacowana kwota brutto na umowie o pracę.")
+
+
+# ---------------------------------------------------------
+# MAIN
+# ---------------------------------------------------------
+
+def main() -> None:
+    if "page" not in st.session_state: st.session_state["page"] = "Strona główna"
+    if "page_number" not in st.session_state: st.session_state["page_number"] = 1
+
+    # SIDEBAR
+    with st.sidebar:
+        st.title("Menu")
+        if st.button("🏠 Strona główna", use_container_width=True): _set_page("Strona główna")
+        if st.button("🧮 Kalkulator (Statystyka)", use_container_width=True): _set_page("Kalkulator")
+        if st.button("Estymator (ML)", use_container_width=True): _set_page("Estymator AI")  # <--- NOWOŚĆ
+        if st.button("📈 Wykresy", use_container_width=True): _set_page("Wykresy")
+        if st.button("🔍 Analiza EDA", use_container_width=True): _set_page("EDA")
+
+    # LOAD DATA
+    try:
+        df = load_data()
+    except Exception as e:
+        st.error(f"Błąd danych: {e}")
+        return
+
+    # ROUTING
+    pg = _current_page()
+    if pg == "Strona główna":
+        render_home(df)
+    elif pg == "Kalkulator":
+        render_calculator_stats(df)
+    elif pg == "Estymator AI":
+        render_ml_estimator(df)
+    elif pg == "Wykresy":
+        render_salary_chart(df)
+    elif pg == "EDA":
+        render_eda(df)
 
 
 if __name__ == "__main__":
