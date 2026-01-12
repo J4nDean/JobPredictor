@@ -237,35 +237,6 @@ def render_eda(df: pd.DataFrame) -> None:
     if os.path.exists(img2): c2.image(img2, caption="Zarobki vs Seniority")
 
 
-def render_calculator_stats(df: pd.DataFrame) -> None:
-    """Stary kalkulator oparty na medianie i kwartylach."""
-    st.title("🧮 Kalkulator Rynkowy (Statystyka)")
-    st.markdown("Analiza historycznych danych (Mediana / Kwartyle).")
-
-    c1, c2, c3 = st.columns(3)
-    tech = c1.selectbox("Technologia", sorted(df["Technology"].unique()))
-    seniority = c2.selectbox("Poziom", sorted(df["Seniority"].unique()))
-    loc = c3.selectbox("Lokalizacja", ["Cała Polska"] + sorted(df["Location"].unique().tolist()))
-    contract = st.radio("Umowa", ["B2B", "Umowa o pracę"], horizontal=True)
-
-    mask = (df["Technology"] == tech) & (df["Seniority"] == seniority)
-    if loc != "Cała Polska": mask &= (df["Location"] == loc)
-
-    col_name = "Salary B2B Max" if contract == "B2B" else "Salary Employment Max"
-    vals = df[mask][col_name]
-    valid = vals[vals > 0]
-
-    st.divider()
-    if valid.empty:
-        st.warning("Brak danych historycznych dla tych kryteriów.")
-        return
-
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Min (25%)", f"{int(valid.quantile(0.25)):,} PLN".replace(",", " "))
-    m2.metric("Mediana", f"{int(valid.median()):,} PLN".replace(",", " "))
-    m3.metric("Max (75%)", f"{int(valid.quantile(0.75)):,} PLN".replace(",", " "))
-
-
 # ---------------------------------------------------------
 # NOWA STRONA: ESTYMATOR AI (Random Forest)
 # ---------------------------------------------------------
@@ -333,8 +304,7 @@ def main() -> None:
     with st.sidebar:
         st.title("Menu")
         if st.button("🏠 Strona główna", use_container_width=True): _set_page("Strona główna")
-        if st.button("🧮 Kalkulator (Statystyka)", use_container_width=True): _set_page("Kalkulator")
-        if st.button("Estymator (ML)", use_container_width=True): _set_page("Estymator AI")  # <--- NOWOŚĆ
+        if st.button("Estymator (ML)", use_container_width=True): _set_page("Estymator AI")
         if st.button("📈 Wykresy", use_container_width=True): _set_page("Wykresy")
         if st.button("🔍 Analiza EDA", use_container_width=True): _set_page("EDA")
 
@@ -349,8 +319,6 @@ def main() -> None:
     pg = _current_page()
     if pg == "Strona główna":
         render_home(df)
-    elif pg == "Kalkulator":
-        render_calculator_stats(df)
     elif pg == "Estymator AI":
         render_ml_estimator(df)
     elif pg == "Wykresy":
