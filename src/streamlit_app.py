@@ -7,6 +7,7 @@ import streamlit as st
 
 # Importy do Machine Learning (Nowe)
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import ColumnTransformer
@@ -133,6 +134,40 @@ def build_and_train_model(data):
     return model, mae, r2
 
 
+@st.cache_resource
+def build_and_train_linear(data):
+    """
+    Trenuje prosty model Regresji Liniowej. Używa cache, aby nie trenować przy każdym kliknięciu.
+    """
+    X = data[['Technology', 'Seniority', 'Location', 'Contract Type']]
+    y = data['Salary']
+
+    # Podział
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
+
+    # Preprocessing
+    categorical_features = ['Technology', 'Seniority', 'Location', 'Contract Type']
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features)
+        ])
+
+    # Model Pipeline
+    model = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('regressor', LinearRegression())
+    ])
+
+    model.fit(X_train, y_train)
+
+    # Metryki
+    y_pred = model.predict(X_test)
+    mae = mean_absolute_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
+
+    return model, mae, r2
+
+
 # ---------------------------------------------------------
 # HELPERY UI (Ze starego kodu)
 # ---------------------------------------------------------
@@ -171,125 +206,92 @@ def _set_page(name: str) -> None:
 
 def render_home(df: pd.DataFrame) -> None:
     st.title("📊 Job Market Explorer")
-    st.markdown("Przegląd ofert pracy (2023-2024).")
-
-    # Filtry
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        tech_filter = st.selectbox("Technologia:", ["Wszystkie"] + sorted(df["Technology"].dropna().unique().tolist()))
-    with col2:
-        loc_filter = st.selectbox("Lokalizacja:", ["Wszystkie"] + sorted(df["Location"].dropna().unique().tolist()))
-    with col3:
-        sen_filter = st.selectbox("Poziom:", ["Wszystkie"] + sorted(df["Seniority"].dropna().unique().tolist()))
-
-    filtered = df.copy()
-    if tech_filter != "Wszystkie": filtered = filtered[filtered["Technology"] == tech_filter]
-    if loc_filter != "Wszystkie": filtered = filtered[filtered["Location"] == loc_filter]
-    if sen_filter != "Wszystkie": filtered = filtered[filtered["Seniority"] == sen_filter]
-
-    st.caption(f"Liczba ofert: {len(filtered)}")
-
-    # Tabela
-    page_number = st.session_state.get("page_number", 1)
-    df_view = format_numeric_table(filtered)
-    if "ID" in df_view.columns:
-        df_view["ID"] = df_view["ID"].astype(str).apply(lambda x: (x[:8] + "…") if len(x) > 9 else x)
-
-    slice_df, start_idx, end_idx = paginate(df_view, page_number, ROWS_PER_PAGE)
-    st.dataframe(slice_df, use_container_width=True, hide_index=True)
-
-    # Paginacja
-    c_prev, _, c_next = st.columns([1, 10, 1])
-    if c_prev.button("Poprzednia") and page_number > 1:
-        st.session_state["page_number"] -= 1
-        st.rerun()
-    if c_next.button("Następna") and end_idx < len(filtered):
-        st.session_state["page_number"] += 1
-        st.rerun()
-
-
-def render_salary_chart(df: pd.DataFrame) -> None:
-    st.title("📈 Wykres zarobków wg technologii")
-    contract_type = st.radio("Typ umowy:", ("Umowa o pracę", "B2B"), horizontal=True)
-    seniority = st.selectbox("Poziom:", ["Wszystkie", "junior", "mid", "senior", "expert"])
-
-    filtered = df if seniority == "Wszystkie" else df[df["Seniority"] == seniority]
-    col_target = "Salary Employment Max" if contract_type == "Umowa o pracę" else "Salary B2B Max"
-
-    # Obliczanie średniej bez -1
-    avg = filtered[filtered[col_target] > 0].groupby("Technology")[col_target].mean().sort_values(ascending=False)
-
-    if not avg.empty:
-        st.bar_chart(avg)
-    else:
-        st.warning("Brak danych dla wybranych kryteriów.")
-
-
-def render_eda(df: pd.DataFrame) -> None:
-    st.title("Eksploracyjna Analiza Danych (EDA)")
-    st.info("Tutaj znajdują się statyczne analizy wygenerowane wcześniej.")
-
-    c1, c2 = st.columns(2)
-    img1 = os.path.join(os.path.dirname(__file__), "company_size_vs_junior_salary.png")
-    img2 = os.path.join(os.path.dirname(__file__), "salary_by_seniority.png")
-
-    if os.path.exists(img1): c1.image(img1, caption="Junior vs Wielkość Firmy")
-    if os.path.exists(img2): c2.image(img2, caption="Zarobki vs Seniority")
-
-
-# ---------------------------------------------------------
-# NOWA STRONA: ESTYMATOR AI (Random Forest)
-# ---------------------------------------------------------
-def render_ml_estimator(raw_df: pd.DataFrame) -> None:
-    st.title("Estymator Zarobków AI")
-    st.markdown("""
-    Ten moduł wykorzystuje **uczenie maszynowe (Random Forest)**, aby oszacować potencjalne wynagrodzenie.
-    Model "nauczył się" zależności między technologią, miastem a zarobkami na podstawie całego zbioru danych.
-    """)
-
-    # 1. Przygotowanie danych
-    clean_df = prepare_training_data(raw_df)
-
-    # 2. Trening (Cache zadba, by nie robić tego ciągle)
-    with st.spinner('Trwa trenowanie modelu AI... (może chwilę potrwać przy pierwszym uruchomieniu)'):
-        model, mae, r2 = build_and_train_model(clean_df)
-
-    # Wyświetlenie jakości modelu
-    with st.expander("ℹ️ Informacje o jakości modelu (Metryki)"):
-        c1, c2 = st.columns(2)
-        c1.metric("Średni błąd (MAE)", f"{mae:,.0f} PLN", help="O tyle średnio model myli się w przewidywaniach.")
-        c2.metric("Dopasowanie (R2 Score)", f"{r2:.2f}",
-                  help="1.0 to ideał. Powyżej 0.5 w płacach to często dobry wynik.")
-
+    
+    # Kluczowe statystyki
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Liczba ofert", f"{len(df)}")
+    avg_b2b = df[df['Salary B2B Max'] > 0]['Salary B2B Max'].median()
+    col2.metric("Mediana B2B", f"{int(avg_b2b):,} PLN".replace(",", " "))
+    avg_uop = df[df['Salary Employment Max'] > 0]['Salary Employment Max'].median()
+    col3.metric("Mediana UoP", f"{int(avg_uop):,} PLN".replace(",", " "))
+    col4.metric("Technologie", f"{df['Technology'].nunique()}")
+    
     st.divider()
-
-    st.subheader("Wprowadź parametry stanowiska")
-
-    # Formularz
+    
+    # Top 10 technologii wg średnich zarobków B2B
+    st.subheader("🏆 Top 10 najlepiej płatnych technologii (B2B)")
+    top_tech = df[df['Salary B2B Max'] > 0].groupby('Technology')['Salary B2B Max'].mean().sort_values(ascending=False).head(10)
+    st.bar_chart(top_tech)
+    
+    st.divider()
+    
+    # Zarobki vs Doświadczenie
     col1, col2 = st.columns(2)
     with col1:
-        tech_input = st.selectbox("Technologia", options=sorted(clean_df['Technology'].unique()), key="ml_tech")
-        seniority_input = st.selectbox("Doświadczenie", options=['junior', 'mid', 'senior', 'expert'], key="ml_sen")
+        st.subheader("📈 Zarobki vs Doświadczenie (B2B)")
+        sen_b2b = df[df['Salary B2B Max'] > 0].groupby('Seniority')['Salary B2B Max'].mean().reindex(['junior', 'mid', 'senior', 'expert'])
+        st.bar_chart(sen_b2b)
+    
     with col2:
-        loc_input = st.selectbox("Lokalizacja", options=sorted(clean_df['Location'].unique()), key="ml_loc")
-        contract_input = st.selectbox("Typ umowy", options=['B2B', 'Employment'], key="ml_con")
+        st.subheader("📊 Liczba ofert wg doświadczenia")
+        sen_counts = df.groupby('Seniority').size().reindex(['junior', 'mid', 'senior', 'expert'])
+        st.bar_chart(sen_counts)
 
-    if st.button("🔮 Oszacuj wynagrodzenie", type="primary"):
-        # Przygotowanie danych wejściowych
+
+# ---------------------------------------------------------
+# STRONA: ESTYMATORY AI (PORÓWNANIE)
+# ---------------------------------------------------------
+def render_estimators(raw_df: pd.DataFrame) -> None:
+    st.title("🤖 Predykcja Zarobków - Porównanie Modeli")
+    
+    # Przygotowanie danych
+    clean_df = prepare_training_data(raw_df)
+    
+    # Trening obu modeli
+    with st.spinner('Trenowanie modeli...'):
+        rf_model, rf_mae, rf_r2 = build_and_train_model(clean_df)
+        lr_model, lr_mae, lr_r2 = build_and_train_linear(clean_df)
+    
+    # Porównanie modeli
+    st.subheader("📊 Jakość Modeli")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("🌲 Random Forest - MAE", f"{rf_mae:,.0f} PLN")
+        st.metric("🌲 Random Forest - R²", f"{rf_r2:.3f}")
+    with col2:
+        st.metric("📐 Linear Regression - MAE", f"{lr_mae:,.0f} PLN")
+        st.metric("📐 Linear Regression - R²", f"{lr_r2:.3f}")
+    
+    st.divider()
+    
+    # Formularz predykcji
+    st.subheader("🔮 Przewidywanie Wynagrodzenia")
+    col1, col2 = st.columns(2)
+    with col1:
+        tech_input = st.selectbox("Technologia", options=sorted(clean_df['Technology'].unique()))
+        seniority_input = st.selectbox("Doświadczenie", options=['junior', 'mid', 'senior', 'expert'])
+    with col2:
+        loc_input = st.selectbox("Lokalizacja", options=sorted(clean_df['Location'].unique()))
+        contract_input = st.selectbox("Typ umowy", options=['B2B', 'Employment'])
+    
+    if st.button("💰 Przewiduj wynagrodzenie", type="primary"):
         input_data = pd.DataFrame({
             'Technology': [tech_input],
             'Seniority': [seniority_input],
             'Location': [loc_input],
             'Contract Type': [contract_input]
         })
-
-        prediction = model.predict(input_data)[0]
-
-        st.success(f"Szacowane wynagrodzenie: **{prediction:,.2f} PLN**")
-        if contract_input == 'B2B':
-            st.caption("Jest to szacowana kwota netto na fakturze (bez VAT).")
-        else:
-            st.caption("Jest to szacowana kwota brutto na umowie o pracę.")
+        
+        rf_pred = rf_model.predict(input_data)[0]
+        lr_pred = lr_model.predict(input_data)[0]
+        
+        st.success("### Przewidywania")
+        c1, c2 = st.columns(2)
+        c1.metric("🌲 Random Forest", f"{rf_pred:,.0f} PLN")
+        c2.metric("📐 Linear Regression", f"{lr_pred:,.0f} PLN")
+        
+        diff = abs(rf_pred - lr_pred)
+        st.info(f"💡 Różnica między modelami: **{diff:,.0f} PLN** ({diff/rf_pred*100:.1f}%)")
 
 
 # ---------------------------------------------------------
@@ -302,11 +304,9 @@ def main() -> None:
 
     # SIDEBAR
     with st.sidebar:
-        st.title("Menu")
-        if st.button("🏠 Strona główna", use_container_width=True): _set_page("Strona główna")
-        if st.button("Estymator (ML)", use_container_width=True): _set_page("Estymator AI")
-        if st.button("📈 Wykresy", use_container_width=True): _set_page("Wykresy")
-        if st.button("🔍 Analiza EDA", use_container_width=True): _set_page("EDA")
+        st.title("🎯 Menu")
+        if st.button("📊 Dashboard", use_container_width=True): _set_page("Strona główna")
+        if st.button("🤖 Predykcja AI", use_container_width=True): _set_page("Estymatory")
 
     # LOAD DATA
     try:
@@ -319,12 +319,8 @@ def main() -> None:
     pg = _current_page()
     if pg == "Strona główna":
         render_home(df)
-    elif pg == "Estymator AI":
-        render_ml_estimator(df)
-    elif pg == "Wykresy":
-        render_salary_chart(df)
-    elif pg == "EDA":
-        render_eda(df)
+    elif pg == "Estymatory":
+        render_estimators(df)
 
 
 if __name__ == "__main__":
