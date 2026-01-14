@@ -207,6 +207,18 @@ def _set_page(name: str) -> None:
 def render_home(df: pd.DataFrame) -> None:
     st.title("📊 Job Market Explorer")
     
+    # About Dataset
+    st.markdown("""
+    ### O Datasecie
+    Oferty pracy z rynku IT w Polsce zebrane w latach **2023-2024**. 
+    Dataset zawiera różne technologie, poziomy doświadczenia oraz dane o wynagrodzeniach dla B2B i UoP.
+    """)
+    
+    st.markdown("**Przykładowe dane:**")
+    st.dataframe(df.head(5), use_container_width=True, hide_index=True)
+    
+    st.divider()
+    
     # Kluczowe statystyki
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Liczba ofert", f"{len(df)}")
