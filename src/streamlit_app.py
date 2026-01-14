@@ -15,7 +15,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.metrics import mean_absolute_error, r2_score
 
 # --- KONFIGURACJA ---
-st.set_page_config(page_title="Job Market Explorer & AI", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Job Market Explorer & AI", page_icon="�", layout="wide")
 
 DATA_FILENAME = "SalaryDataFinall.csv"
 ROWS_PER_PAGE = 20
@@ -205,7 +205,7 @@ def _set_page(name: str) -> None:
 # ---------------------------------------------------------
 
 def render_home(df: pd.DataFrame) -> None:
-    st.title("📊 Job Market Explorer")
+    st.title("Job Market Explorer")
     
     # About Dataset
     st.markdown("""
@@ -231,7 +231,7 @@ def render_home(df: pd.DataFrame) -> None:
     st.divider()
     
     # Top 10 technologii wg średnich zarobków B2B
-    st.subheader("🏆 Top 10 najlepiej płatnych technologii (B2B)")
+    st.subheader("Top 10 najlepiej płatnych technologii (B2B)")
     top_tech = df[df['Salary B2B Max'] > 0].groupby('Technology')['Salary B2B Max'].mean().sort_values(ascending=False).head(10)
     st.bar_chart(top_tech)
     
@@ -240,12 +240,12 @@ def render_home(df: pd.DataFrame) -> None:
     # Zarobki vs Doświadczenie
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("📈 Zarobki vs Doświadczenie (B2B)")
+        st.subheader("Zarobki vs Doświadczenie (B2B)")
         sen_b2b = df[df['Salary B2B Max'] > 0].groupby('Seniority')['Salary B2B Max'].mean().reindex(['junior', 'mid', 'senior', 'expert'])
         st.bar_chart(sen_b2b)
     
     with col2:
-        st.subheader("📊 Liczba ofert wg doświadczenia")
+        st.subheader("Liczba ofert wg doświadczenia")
         sen_counts = df.groupby('Seniority').size().reindex(['junior', 'mid', 'senior', 'expert'])
         st.bar_chart(sen_counts)
 
@@ -254,7 +254,7 @@ def render_home(df: pd.DataFrame) -> None:
 # STRONA: ESTYMATORY AI (PORÓWNANIE)
 # ---------------------------------------------------------
 def render_estimators(raw_df: pd.DataFrame) -> None:
-    st.title("🤖 Predykcja Zarobków - Porównanie Modeli")
+    st.title("Predykcja Zarobków - Porównanie Modeli")
     
     # Przygotowanie danych
     clean_df = prepare_training_data(raw_df)
@@ -265,19 +265,19 @@ def render_estimators(raw_df: pd.DataFrame) -> None:
         lr_model, lr_mae, lr_r2 = build_and_train_linear(clean_df)
     
     # Porównanie modeli
-    st.subheader("📊 Jakość Modeli")
+    st.subheader("Jakość Modeli")
     col1, col2 = st.columns(2)
     with col1:
-        st.metric("🌲 Random Forest - MAE", f"{rf_mae:,.0f} PLN")
-        st.metric("🌲 Random Forest - R²", f"{rf_r2:.3f}")
+        st.metric("Random Forest - MAE", f"{rf_mae:,.0f} PLN")
+        st.metric("Random Forest - R²", f"{rf_r2:.3f}")
     with col2:
-        st.metric("📐 Linear Regression - MAE", f"{lr_mae:,.0f} PLN")
-        st.metric("📐 Linear Regression - R²", f"{lr_r2:.3f}")
+        st.metric("Linear Regression - MAE", f"{lr_mae:,.0f} PLN")
+        st.metric("Linear Regression - R²", f"{lr_r2:.3f}")
     
     st.divider()
     
     # Formularz predykcji
-    st.subheader("🔮 Przewidywanie Wynagrodzenia")
+    st.subheader("Przewidywanie Wynagrodzenia")
     col1, col2 = st.columns(2)
     with col1:
         tech_input = st.selectbox("Technologia", options=sorted(clean_df['Technology'].unique()))
@@ -286,7 +286,7 @@ def render_estimators(raw_df: pd.DataFrame) -> None:
         loc_input = st.selectbox("Lokalizacja", options=sorted(clean_df['Location'].unique()))
         contract_input = st.selectbox("Typ umowy", options=['B2B', 'Employment'])
     
-    if st.button("💰 Przewiduj wynagrodzenie", type="primary"):
+    if st.button("Przewiduj wynagrodzenie", type="primary"):
         input_data = pd.DataFrame({
             'Technology': [tech_input],
             'Seniority': [seniority_input],
@@ -299,11 +299,11 @@ def render_estimators(raw_df: pd.DataFrame) -> None:
         
         st.success("### Przewidywania")
         c1, c2 = st.columns(2)
-        c1.metric("🌲 Random Forest", f"{rf_pred:,.0f} PLN")
-        c2.metric("📐 Linear Regression", f"{lr_pred:,.0f} PLN")
+        c1.metric("Random Forest", f"{rf_pred:,.0f} PLN")
+        c2.metric("Linear Regression", f"{lr_pred:,.0f} PLN")
         
         diff = abs(rf_pred - lr_pred)
-        st.info(f"💡 Różnica między modelami: **{diff:,.0f} PLN** ({diff/rf_pred*100:.1f}%)")
+        st.info(f"Różnica między modelami: **{diff:,.0f} PLN** ({diff/rf_pred*100:.1f}%)")
 
 
 # ---------------------------------------------------------
@@ -316,9 +316,9 @@ def main() -> None:
 
     # SIDEBAR
     with st.sidebar:
-        st.title("🎯 Menu")
-        if st.button("📊 Dashboard", use_container_width=True): _set_page("Strona główna")
-        if st.button("🤖 Predykcja AI", use_container_width=True): _set_page("Estymatory")
+        st.title("Menu")
+        if st.button("Dashboard", use_container_width=True): _set_page("Strona główna")
+        if st.button("Predykcja AI", use_container_width=True): _set_page("Estymatory")
 
     # LOAD DATA
     try:
